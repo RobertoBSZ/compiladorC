@@ -1,0 +1,224 @@
+Trabalho: Implementação de um Compilador para a Linguagem C
+
+Parte 1: Construção do Analisador Léxico
+Gerar as expressões regulares para cada token referente a linguagem C conforme descrita abaixo e de acordo com o código de exemplo.
+
+Palavras Reservadas e Símbolos na Linguagem C
+
+Palavras Reservadas:
+auto, break, case, char, const, continue, default, do, double, else, enum, extern,
+float, for, goto, if, int, long, register, return, short, signed, sizeof, static,
+struct, switch, typedef, union, unsigned, void, volatile, while
+
+Explicação das Categorias:
+
+Tipos de dados primitivos: char, double, float, int, long, short, signed, unsigned, void
+
+Controle de fluxo: if, else, switch, case, default, while, do, for, break, continue, goto
+
+Modificadores de armazenamento: auto, extern, register, static, typedef
+
+Operadores e manipulação de memória: sizeof
+
+Manipulação de estrutura de dados: struct, union, enum
+
+Retorno de função: return
+
+Modificadores de variável: const, volatile
+
+Operadores e Símbolos:
+
+Aritméticos: +, -, *, /, %, ++, --
+
+Relacionais: ==, !=, >, <, >=, <=
+
+Lógicos: &&, ||, !
+
+Bitwise: &, |, ^, ~, <<, >>
+
+Atribuição: =, +=, -=, *=, /=, %=, &=, !=, ^=, <<=, >>=
+
+Outros: sizeof, ?: , , ->, [ ], { }, ( ), ;
+
+Exemplo de código:
+#include <stdio.h>
+#include <stdlib.h>
+
+#define MAX // tratar #define para definir constantes
+
+Comentários:
+// comentário de linha única
+/* comentário de múltiplas linhas */
+
+Array:
+int array[5] = {1, 2, 3, 4, 5};
+int array[5];
+int array[];
+int *arr;
+arr = (int *)malloc(n * sizeof(int));
+free(arr);
+
+Definição de escopo: { e }
+{
+int soma4 = 10;
+odd_count = soma4 * 10 + 34 + 45 - 78;
+}
+
+Descrição do Trabalho
+O objetivo é implementar um compilador para a linguagem C, considerando palavras reservadas, operadores, estruturas de controle e atribuições. Não serão tratadas funções.
+
+Parte 1: Definição de Expressões Regulares para Tokens
+
+Palavras reservadas
+
+Identificadores
+
+Números inteiros e de ponto flutuante
+
+Strings e caracteres
+
+Operadores e símbolos especiais
+
+Parte 2: Construção da Gramática
+
+Atribuições, alocações, desalocações
+
+Estruturas condicionais (if, else)
+
+Estruturas de repetição (while, do-while, for)
+
+Operações de comparação, defines, includes
+
+Implementação deve exibir mensagens de depuração.
+
+Parte 3: Tabela de Símbolos, Análise Semântica e Código Intermediário
+
+Criação da tabela de símbolos
+
+Geração de árvores sintáticas
+
+Análise semântica
+
+Geração de código intermediário para expressões de atribuição.
+
+Exemplo de Código Completo:
+#include <stdio.h>
+#include <stdlib.h>
+#define MAX 100
+
+struct Data {
+int id;
+char name[50];
+};
+
+union Value {
+int i;
+float f;
+};
+
+enum Color { RED, GREEN, BLUE };
+
+void printArray(int *arr, int size);
+
+int main() {
+int x = 10;
+signed int w = -20;
+unsigned int tt = 50;
+long int rt = 100000;
+short int si = 5;
+float f = 3.14;
+double d = 2.718;
+char ch = 'A';
+const int constant_var = 500;
+volatile int volatile_var = 200;
+
+int *ptr = (int *)malloc(MAX * sizeof(int));
+if (ptr == NULL) {
+    printf("Erro na alocação de memória\n");
+    return 1;
+}
+
+int matrix[3][3] = {
+    {1, 2, 3},
+    {4, 5, 6},
+    {7, 8, 9}
+};
+
+struct Data data1 = {1, "John"};
+union Value val;
+val.i = 10;
+enum Color color = RED;
+
+if (x > 0) {
+    printf("x é positivo.\n");
+} else {
+    printf("x é negativo ou zero.\n");
+}
+
+switch (color) {
+    case RED: printf("A cor é Vermelho.\n"); break;
+    case GREEN: printf("A cor é Verde.\n"); break;
+    case BLUE: printf("A cor é Azul.\n"); break;
+    default: printf("Cor desconhecida.\n");
+}
+
+for (int i = 0; i < 5; i++) {
+    printf("For loop - Iteração %d\n", i);
+}
+
+int count = 0;
+while (count < 3) {
+    printf("While loop - Contagem: %d\n", count);
+    count++;
+}
+
+count = 0;
+do {
+    printf("Do-while loop - Contagem: %d\n", count);
+    count++;
+} while (count < 3);
+
+for (int i = 0; i < 10; i++) {
+    ptr[i] = i * 10;
+}
+
+printArray(ptr, 10);
+
+register int fast_var = 30;
+printf("Variável registrada: %d\n", fast_var);
+
+typedef unsigned long ULong;
+ULong bigNum = 123456789;
+printf("ULong: %lu\n", bigNum);
+
+free(ptr);
+printf("Memória desalocada com sucesso.\n");
+return 0;
+}
+
+void printArray(int *arr, int size) {
+printf("Array dinâmico: ");
+for (int i = 0; i < size; i++) {
+printf("%d ", arr[i]);
+}
+printf("\n");
+}
+
+Saída Esperada:
+x é positivo.
+A cor é Vermelho.
+For loop - Iteração 0
+For loop - Iteração 1
+For loop - Iteração 2
+For loop - Iteração 3
+For loop - Iteração 4
+While loop - Contagem: 0
+While loop - Contagem: 1
+While loop - Contagem: 2
+Do-while loop - Contagem: 0
+Do-while loop - Contagem: 1
+Do-while loop - Contagem: 2
+Array dinâmico: 0 10 20 30 40 50 60 70 80 90
+Variável registrada: 30
+ULong: 123456789
+Memória desalocada com sucesso.
