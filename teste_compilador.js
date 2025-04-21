@@ -1,3 +1,8 @@
+// Importa o parser gerado pelo Jison
+const parser = require('./compilador.js');
+
+// Um exemplo de código-fonte C que você quer analisar
+const codigoFonte = `
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -130,4 +135,16 @@ void printArray(int *arr, int size) {
         printf("%d ", arr[i]);
     }
     printf("\n");
+}
+
+
+`;
+
+// Testa o código-fonte usando o parser gerado
+try {
+    const resultado = parser.parse(codigoFonte);
+    console.log('Código C analisado com sucesso!');
+    console.log('Resultado da análise:', resultado);  // Aqui você verá o resultado da análise do parser
+} catch (error) {
+    console.error('Erro durante a análise:', error.message);
 }

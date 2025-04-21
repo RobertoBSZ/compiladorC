@@ -179,7 +179,6 @@
 ";"                                 {console.log('Token SEMICOLON'); return ';';}
 ":"                                 {console.log('Token COLON'); return ':';}
 "."                                 {console.log('Token DOT'); return '.';}
-"'"                                 {console.log('Token QUOTE'); return 'QUOTE';}
 "("                                 {console.log('Token LPAREN'); return '(';}
 ")"                                 {console.log('Token RPAREN'); return ')';}
 "{"                                 {console.log('Token LBRACE'); return '{';}
@@ -211,12 +210,11 @@
 
 "%d"                                {console.log('Token FORMAT_D'); return 'FORMAT_D';}
 
-\"([^\"\n]|\\\")*\"                 {console.log('Token STRING_LIT:', yytext); return 'STRING_LIT';}
+\"([^\\\"]|\\.)*\"   {console.log('Token STRING_LIT:', yytext); return 'STRING_LIT';}
 [a-zA-Z][a-zA-Z0-9_]*               {console.log('Token IDF'); return 'IDF';}
 [0-9]*\.[0-9]+([eE][+-][0-9]+)?     {console.log('Token F_LIT'); return 'F_LIT';}
 [0-9]+                              {console.log('Token INT_LIT'); return 'INT_LIT';}
 "'[a-zA-Z0-9]'"                     {console.log('Token CHAR_LIT'); return 'CHAR_LIT';}
-"'"                                 {console.log('Token QUOTE'); return 'QUOTE';}
 "#"                                 {console.log('Token HASH'); return '#';}
 .                                   {console.log('Erro léxico: caractere [', yytext, '] não reconhecido.');}
 <<EOF>>                             {console.log('Token EOF'); return 'EOF';}
@@ -661,6 +659,17 @@ declaracao_variavel
             node: new Node('POINTER_DECL', new Node($1), $3.node),
             value: $3.value,
             stringValue: $3.stringValue
+        };
+    }
+    | tipo_var QUOTE IDF QUOTE
+    {
+        // Support for character literal declarations (like 'const int 'A';')
+        let varName = '_char_const_' + $3;
+        criarVariavel($1, varName, $3.charCodeAt(0));
+        $$ = {
+            node: new Node('CHAR_CONST_DECL', new Node($1), new Node($3)),
+            value: $3.charCodeAt(0),
+            stringValue: varName
         };
     }
     ;
@@ -1185,7 +1194,7 @@ fator
             stringValue: criaTemp(),
             node: new Node('UNARY_MINUS', $2.node)
         };
-        criaTAC($$.stringValue, '0', $2.stringValue, 'SUB');
+        criaTACUnaryOp('-', $2.stringValue, $$.stringValue);
       }
     | cast_exp
       {$$ = $1;}
@@ -1211,13 +1220,13 @@ fator
       {$$ = $1;}
     | '(' tipo_var MUL ')' malloc_exp
     {
-    $$ = {
-        type: 'CAST_MALLOC',
-        stringValue: criaTemp(),
-        node: new Node('CAST_MALLOC', new Node($2 + '*'), $5.node)
-    };
+        $$ = {
+            type: 'CAST_MALLOC',
+            stringValue: criaTemp(),
+            node: new Node('CAST_MALLOC', new Node($2 + '*'), $5.node)
+        };
+        criaTAC($$.stringValue, $5.stringValue, $2 + '*', 'CAST');
     }
-
     ;
 
 expressao_condicional
@@ -1231,6 +1240,113 @@ expressao_condicional
             node: new Node('NOT', $2.node)
         };
         criaTACUnaryOp('!', $2.stringValue, $$.stringValue);
+    }
+    | expressao_primaria operador_relacional expressao_primaria
+    {
+        $$ = {
+            type: $2,
+            value: $1.value + $2 + $3.value,
+            stringValue: criaTemp(),
+            node: new Node($2, $1.node, $3.node)
+        };
+        criaTAC($$.stringValue, $1.stringValue, $3.stringValue, $2);
+    }
+    | expressao_primaria operador_relacional SUB INT_LIT MUL IDF
+    {
+        $$ = {
+            type: $2,
+            value: $1.value + $2 + (-parseInt($4)),
+            stringValue: criaTemp(),
+            node: new Node($2, $1.node, new Node('UNARY_MINUS', new Node('MUL', new Node($4), new Node($6))))
+        };
+        let tempMulCond1 = criaTemp();
+        criaTAC(tempMulCond1, $4, $6, 'MUL');
+        let tempNegCond1 = criaTemp();
+        criaTACUnaryOp('-', tempMulCond1, tempNegCond1);
+        criaTAC($$.stringValue, $1.stringValue, tempNegCond1, $2);
+    }
+    | expressao_condicional AND expressao_condicional
+    {
+        $$ = {
+            type: 'AND',
+            value: $1.value && $3.value,
+            stringValue: criaTemp(),
+            node: new Node('AND', $1.node, $3.node)
+        };
+        criaTAC($$.stringValue, $1.stringValue, $3.stringValue, 'AND');
+    }
+    | expressao_condicional OR expressao_condicional
+    {
+        $$ = {
+            type: 'OR',
+            value: $1.value || $3.value,
+            stringValue: criaTemp(),
+            node: new Node('OR', $1.node, $3.node)
+        };
+        criaTAC($$.stringValue, $1.stringValue, $3.stringValue, 'OR');
+    }
+    | expressao_aritmetica operador_relacional expressao_aritmetica
+    {
+        $$ = {
+            type: $2,
+            value: $1.value + $2 + $3.value,
+            stringValue: criaTemp(),
+            node: new Node($2, $1.node, $3.node)
+        };
+        criaTAC($$.stringValue, $1.stringValue, $3.stringValue, $2);
+    }
+    | IDF operador_relacional expressao_aritmetica
+    {
+        verificaVariavel($1);
+        $$ = {
+            type: $2,
+            value: $1 + $2 + $3.value,
+            stringValue: criaTemp(),
+            node: new Node($2, new Node($1), $3.node)
+        };
+        criaTAC($$.stringValue, $1, $3.stringValue, $2);
+    }
+    | expressao_aritmetica operador_relacional IDF
+    {
+        verificaVariavel($3);
+        $$ = {
+            type: $2,
+            value: $1.value + $2 + $3,
+            stringValue: criaTemp(),
+            node: new Node($2, $1.node, new Node($3))
+        };
+        criaTAC($$.stringValue, $1.stringValue, $3, $2);
+    }
+    | IDF operador_relacional SUB INT_LIT MUL IDF
+    {
+        verificaVariavel($1);
+        $$ = {
+            type: $2,
+            value: $1 + $2 + (-parseInt($4)),
+            stringValue: criaTemp(),
+            node: new Node($2, new Node($1), new Node('UNARY_MINUS', new Node('MUL', new Node($4), new Node($6))))
+        };
+        let tempMulCond2 = criaTemp();
+        criaTAC(tempMulCond2, $4, $6, 'MUL');
+        let tempNegCond2 = criaTemp();
+        criaTACUnaryOp('-', tempMulCond2, tempNegCond2);
+        criaTAC($$.stringValue, $1, tempNegCond2, $2);
+    }
+    | IDF EQ SUB INT_LIT MUL IDF
+    {
+        verificaVariavel($1);
+        verificaVariavel($6);
+        $$ = {
+            type: 'EQ',
+            value: $1 + '==' + (-parseInt($4)),
+            stringValue: criaTemp(),
+            node: new Node('==', new Node($1), new Node('UNARY_MINUS', new Node('MUL', new Node($4), new Node($6))))
+        };
+        let tempMulCond3 = criaTemp();
+        criaTAC(tempMulCond3, $4, $6, 'MUL');
+        let tempNegCond3 = criaTemp();
+        criaTACUnaryOp('-', tempMulCond3, tempNegCond3);
+        criaTAC($$.stringValue, $1, tempNegCond3, '==');
     }
     ;
 
@@ -1318,6 +1434,18 @@ expressao_primaria
     {
         $$ = $1;
     }
+    | SUB INT_LIT MUL IDF
+    {
+        $$ = {
+            type: 'UNARY_MINUS_MUL',
+            value: -parseInt($2) * 1, // placeholder for IDF value
+            stringValue: criaTemp(),
+            node: new Node('UNARY_MINUS_MUL', new Node($2), new Node($4))
+        };
+        let tempMulPrim = criaTemp();
+        criaTAC(tempMulPrim, $2, $4, 'MUL');
+        criaTACUnaryOp('-', tempMulPrim, $$.stringValue);
+    }
     ;
 
 expressao_relacional
@@ -1331,15 +1459,31 @@ expressao_relacional
         };
         criaTAC($$.stringValue, $1.stringValue, $3.stringValue, $2);
     }
-    | expressao_primaria operador_relacional SUB INT_LIT
+    | expressao_primaria operador_relacional SUB expressao_primaria
+    {
+        $$ = {
+            type: $2,
+            value: $1.value + $2 + (-$4.value),
+            stringValue: criaTemp(),
+            node: new Node($2, $1.node, new Node('UNARY_MINUS', $4.node))
+        };
+        let tempNegRel = criaTemp();
+        criaTACUnaryOp('-', $4.stringValue, tempNegRel);
+        criaTAC($$.stringValue, $1.stringValue, tempNegRel, $2);
+    }
+    | expressao_primaria operador_relacional SUB INT_LIT MUL IDF
     {
         $$ = {
             type: $2,
             value: $1.value + $2 + (-parseInt($4)),
             stringValue: criaTemp(),
-            node: new Node($2, $1.node, new Node('-' + $4))
+            node: new Node($2, $1.node, new Node('UNARY_MINUS', new Node('MUL', new Node($4), new Node($6))))
         };
-        criaTAC($$.stringValue, $1.stringValue, '-' + $4, $2);
+        let tempMulRel = criaTemp();
+        criaTAC(tempMulRel, $4, $6, 'MUL');
+        let tempNegRel2 = criaTemp();
+        criaTACUnaryOp('-', tempMulRel, tempNegRel2);
+        criaTAC($$.stringValue, $1.stringValue, tempNegRel2, $2);
     }
     | expressao_primaria operador_relacional SUB IDF
     {
@@ -1348,9 +1492,11 @@ expressao_relacional
             type: $2,
             value: $1.value + $2 + ('-' + $4),
             stringValue: criaTemp(),
-            node: new Node($2, $1.node, new Node('-' + $4))
+            node: new Node($2, $1.node, new Node('UNARY_MINUS', new Node($4)))
         };
-        criaTAC($$.stringValue, $1.stringValue, '-' + $4, $2);
+        let tempNegRel3 = criaTemp();
+        criaTACUnaryOp('-', $4, tempNegRel3);
+        criaTAC($$.stringValue, $1.stringValue, tempNegRel3, $2);
     }
     ;
 
@@ -1424,8 +1570,3 @@ enum_member
     | IDF '=' INT_LIT
     { $$ = { node: new Node('ENUM_MEMBER_VALUE', new Node($1), new Node($3)) }; }
     ;
-
-
-
-
-

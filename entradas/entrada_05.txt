@@ -1,0 +1,6 @@
+#define SIZE 5
+int x = -5 * SIZE;
+
+int x = SIZE;  // Deve funcionar
+int y = -5;    // Deve funcionar
+int z = x * y;
