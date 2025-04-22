@@ -548,8 +548,20 @@ case_list
 case_item
     : CASE valor_lit ':' 
     { $$ = { node: new Node('CASE', $2.node, null) }; }
+    | CASE IDF ':'  // Aceita identificadores como valores
+    { 
+        $$ = { 
+            node: new Node('CASE', new Node('IDF', new Node($2)), null) 
+        };
+    }
     | CASE valor_lit ':' statements_list
     { $$ = { node: new Node('CASE', $2.node, $4.node) }; }
+    | CASE IDF ':' statements_list  // Aceita identificadores como valores com statements
+    { 
+        $$ = { 
+            node: new Node('CASE', new Node('IDF', new Node($2)), $4.node) 
+        };
+    }
     | DEFAULT ':' 
     { $$ = { node: new Node('DEFAULT', null) }; }
     | DEFAULT ':' statements_list
@@ -646,6 +658,15 @@ valor_lit
             value: $1,
             stringValue: $1,
             node: new Node('STRING_LIT', new Node($1))
+        };
+    }
+    | IDF  // Aceita identificadores como valores (para enums)
+    {
+        $$ = {
+            type: 'IDF_LIT',
+            value: $1,
+            stringValue: $1,
+            node: new Node('IDF_LIT', new Node($1))
         };
     }
     ;
