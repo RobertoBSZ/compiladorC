@@ -694,6 +694,35 @@ declaracao_variavel
             stringValue: $3
         };
     }
+    | UNION IDF IDF ';'  // Declaração simples de union
+    {
+        $$ = {
+            node: new Node('UNION_DECL', new Node('union ' + $2), new Node($3)),
+            value: null,
+            stringValue: $3
+        };
+        criarVariavel('union ' + $2, $3, null);
+    }
+    | UNION IDF IDF '=' '{' union_init_list '}' ';'  // Declaração com inicialização
+    {
+        $$ = {
+            node: new Node('UNION_INIT_DECL', new Node('union ' + $2), new Node($3), $6.node),
+            value: $6.value,
+            stringValue: $3
+        };
+        criarVariavel('union ' + $2, $3, $6.value);
+    }
+    ;
+
+union_init_list
+    : valor_lit
+    {
+        $$ = {
+            node: new Node('UNION_INIT_VALUE', $1.node),
+            value: $1.value,
+            stringValue: $1.stringValue
+        };
+    }
     ;
 
 lista_ids
@@ -1675,12 +1704,13 @@ struct_member
 /* Unions */
 union_decl
     : UNION IDF '{' struct_member_list '}' ';'
-    { $$ = { node: new Node('UNION_DECL', new Node($2), $4.node) }; }
+    { $$ = { node: new Node('UNION_DEF', new Node($2), $4.node) }; }
     | UNION IDF '{' struct_member_list '}' IDF ';'
     { 
         $$ = { 
-            node: new Node('UNION_WITH_VAR', new Node($2), $4.node, new Node($6)) 
+            node: new Node('UNION_DEF_WITH_VAR', new Node($2), $4.node, new Node($6)) 
         }; 
+        criarVariavel('union ' + $2, $6, null);
     }
     ;
 
