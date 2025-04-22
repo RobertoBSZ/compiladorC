@@ -241,9 +241,10 @@ corpo
         console.log("Análise Sintática concluída com sucesso!\n");
 
         // Exibindo a Tabela de Símbolos
-        console.log('Tabela de símbolos:\n', tabelaSimbolos);
+        // console.log('Tabela de símbolos:\n', tabelaSimbolos);
         
         // Verificação de erros semânticos
+        /*
         console.log('Análise Semântica\n');
         if (erros.length > 0) {
             console.log('Erros semânticos encontrados:\n', erros);
@@ -255,12 +256,15 @@ corpo
             printaTAC();
             console.log('');
         }
+        */
 
         // Gerando ASTs
+        /*
         console.log('ASTs geradas: \n');
         arvores.forEach(arvore => {
             printPosOrder(arvore.root, 1);
         });
+        */
     }
     ;
 
