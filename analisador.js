@@ -5,7 +5,7 @@ try {
   console.log("Iniciando análise...");
   
   // Obtém o nome do arquivo a partir dos argumentos da linha de comando ou usa o padrão
-  const fileName = process.argv[2] || 'entradas/entrada_03.txt';
+  const fileName = process.argv[2] || 'entradas/entrada_05_tudo.txt';
   
   // Lê o arquivo de entrada
   const input = fs.readFileSync(fileName, 'utf8');

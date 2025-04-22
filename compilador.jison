@@ -141,6 +141,7 @@
 "#define"                           {console.log('Token DEFINE'); return 'DEFINE';}
 "stdio.h"                           {console.log('Token STDIO_H'); return 'STDIO_H';}
 "stdlib.h"                          {console.log('Token STDLIB_H'); return 'STDLIB_H';}
+"string.h"                          {console.log('Token STDLIB_H'); return 'STDLIB_H';}
 "malloc"                            {console.log('Token MALLOC'); return 'MALLOC';}
 "free"                              {console.log('Token FREE'); return 'FREE';}
 "sizeof"                            {console.log('Token SIZEOF'); return 'SIZEOF';}
