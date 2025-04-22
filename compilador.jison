@@ -132,8 +132,9 @@
 %lex
 %%
 
-"//"[^\n]*                          {/* Ignorar comentários de linha */}
-"/\\*"[^*]*"\\*"+([^/*][^*]*"\\*"+)*"/" {/* Ignorar comentários de bloco */}
+"//"[^\n]*        { /* Ignora completamente comentários de linha */ return; }
+"/\\*"([^*]|"\\*"+[^*/])*"\\*"+"/" { /* Ignora completamente comentários de bloco */ return; }
+"/*"(.|\n)*?"*/"  { /* Alternativa robusta para comentários de bloco */ return; }
 
 \s+                                 {/* Ignorar espaços em branco */}
 "#include"                          {console.log('Token INCLUDE'); return 'INCLUDE';}
@@ -300,6 +301,31 @@ preproc_directive
     }
     ;
 
+acesso_membro
+    : IDF '.' IDF
+    {
+        verificaVariavel($1);
+        $$ = {
+            node: new Node('MEMBER_ACCESS', new Node($1), new Node($3)),
+            stringValue: $1 + '.' + $3
+        };
+        // Gera TAC para acesso a membro
+        criaTAC($$.stringValue, $1, $3, 'MEMBER_ACCESS');
+    }
+    | IDF '->' IDF
+    {
+        verificaVariavel($1);
+        $$ = {
+            node: new Node('PTR_MEMBER_ACCESS', new Node($1), new Node($3)),
+            stringValue: $1 + '->' + $3
+        };
+        // Gera TAC para acesso via ponteiro
+        let tempDeref = criaTemp();
+        criaTAC(tempDeref, '*', $1, 'DEREF');
+        criaTAC($$.stringValue, tempDeref, $3, 'MEMBER_ACCESS');
+    }
+    ;
+
 /* Definindo múltiplas declarações */
 statements_list
     : statement
@@ -340,6 +366,7 @@ statement
     { $$ = { node: $1.node }; }
     | enum_decl
     { $$ = { node: $1.node }; }
+    | declaracao_variavel ';'  /* Isso já deve estar incluído via exp_stmt */
     ;
 
 function_definition
@@ -684,7 +711,7 @@ declaracao_variavel
             stringValue: varName
         };
     }
-    | STRUCT IDF IDF '=' '{' struct_init_list '}' ';'  // Declaração com inicialização
+    | STRUCT IDF IDF '=' '{' struct_init_list '}'  // Declaração com inicialização
     {
         let tipo = 'struct ' + $2;
         criarVariavel(tipo, $3, $6.value);
@@ -694,7 +721,7 @@ declaracao_variavel
             stringValue: $3
         };
     }
-    | UNION IDF IDF ';'  // Declaração simples de union
+    | UNION IDF IDF  // Declaração simples de union
     {
         $$ = {
             node: new Node('UNION_DECL', new Node('union ' + $2), new Node($3)),
@@ -1064,12 +1091,27 @@ expressao_atribuicao
             node: new Node('STRUCT_INIT', new Node($1), $4.node),
             stringValue: criaTemp()
         };
-        // Aqui você pode adicionar a geração de TAC para inicialização de struct
+    }
+    | IDF '=' '{' union_init_list '}'  /* Inicialização de union */
+    {
+        verificaVariavel($1);
+        $$ = {
+            node: new Node('UNION_INIT', new Node($1), $4.node),
+            stringValue: criaTemp()
+        };
+    }
+    | acesso_membro '=' expressao_aritmetica
+    {
+        $$ = {
+            node: new Node('=', $1.node, $3.node),
+            stringValue: criaTemp()
+        };
+        criaTAC($$.stringValue, $1.stringValue, $3.stringValue, '=');
     }
     ;
 
 struct_init_list
-    : valor_lit
+    : expressao_aritmetica
     {
         $$ = {
             node: new Node('STRUCT_INIT_VALUE', $1.node),
@@ -1077,7 +1119,24 @@ struct_init_list
             stringValue: $1.stringValue
         };
     }
-    | struct_init_list ',' valor_lit
+    | string_lit  // Para strings na inicialização
+    {
+        $$ = {
+            node: new Node('STRUCT_INIT_STRING', $1.node),
+            value: $1.value,
+            stringValue: $1.stringValue
+        };
+    }
+    | struct_init_list ',' expressao_aritmetica
+    {
+        $1.value.push($3.value);
+        $$ = {
+            node: new Node('STRUCT_INIT_VALUES', $1.node, $3.node),
+            value: $1.value,
+            stringValue: $1.stringValue
+        };
+    }
+    | struct_init_list ',' string_lit
     {
         $1.value.push($3.value);
         $$ = {
@@ -1395,6 +1454,8 @@ fator
         };
         criaTAC($$.stringValue, $5.stringValue, $2 + '*', 'CAST');
     }
+    | acesso_membro
+    { $$ = $1; }
     ;
 
 expressao_condicional
@@ -1703,13 +1764,17 @@ struct_member
 
 /* Unions */
 union_decl
-    : UNION IDF '{' struct_member_list '}' ';'
-    { $$ = { node: new Node('UNION_DEF', new Node($2), $4.node) }; }
-    | UNION IDF '{' struct_member_list '}' IDF ';'
+    : UNION IDF '{' struct_member_list '}' ';'  /* Definição de union */
+    { 
+        $$ = { 
+            node: new Node('UNION_DEF', new Node($2), $4.node) 
+        };
+    }
+    | UNION IDF '{' struct_member_list '}' IDF ';'  /* Definição com declaração */
     { 
         $$ = { 
             node: new Node('UNION_DEF_WITH_VAR', new Node($2), $4.node, new Node($6)) 
-        }; 
+        };
         criarVariavel('union ' + $2, $6, null);
     }
     ;
