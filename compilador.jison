@@ -612,6 +612,15 @@ valor_lit
             node: new Node('CHAR_LIT', new Node($1))
         };
     }
+    | STRING_LIT  // Adicione esta regra para strings
+    {
+        $$ = {
+            type: 'STRING_LIT',
+            value: $1,
+            stringValue: $1,
+            node: new Node('STRING_LIT', new Node($1))
+        };
+    }
     ;
 
 /* Tipo da variável */
@@ -673,6 +682,16 @@ declaracao_variavel
             node: new Node('CHAR_CONST_DECL', new Node($1), new Node($3)),
             value: $3.charCodeAt(0),
             stringValue: varName
+        };
+    }
+    | STRUCT IDF IDF '=' '{' struct_init_list '}' ';'  // Declaração com inicialização
+    {
+        let tipo = 'struct ' + $2;
+        criarVariavel(tipo, $3, $6.value);
+        $$ = {
+            node: new Node('STRUCT_INIT_DECL', new Node(tipo), new Node($3), $6.node),
+            value: $6.value,
+            stringValue: $3
         };
     }
     ;
@@ -1006,6 +1025,35 @@ expressao_atribuicao
     {
         $$ = {
             node: $1.node,
+            stringValue: $1.stringValue
+        };
+    }
+    | IDF '=' '{' struct_init_list '}'  // Inicialização de struct
+    {
+        verificaVariavel($1);
+        $$ = {
+            node: new Node('STRUCT_INIT', new Node($1), $4.node),
+            stringValue: criaTemp()
+        };
+        // Aqui você pode adicionar a geração de TAC para inicialização de struct
+    }
+    ;
+
+struct_init_list
+    : valor_lit
+    {
+        $$ = {
+            node: new Node('STRUCT_INIT_VALUE', $1.node),
+            value: [$1.value],
+            stringValue: $1.stringValue
+        };
+    }
+    | struct_init_list ',' valor_lit
+    {
+        $1.value.push($3.value);
+        $$ = {
+            node: new Node('STRUCT_INIT_VALUES', $1.node, $3.node),
+            value: $1.value,
             stringValue: $1.stringValue
         };
     }
