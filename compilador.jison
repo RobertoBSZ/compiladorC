@@ -367,6 +367,8 @@ statement
     | enum_decl
     { $$ = { node: $1.node }; }
     | declaracao_variavel ';'  /* Isso já deve estar incluído via exp_stmt */
+    | typedef_decl ';'
+    { $$ = { node: $1.node }; }
     ;
 
 function_definition
@@ -674,33 +676,43 @@ valor_lit
 /* Tipo da variável */
 tipo_var
     : INT 
-    {$$ = 'int';}
+    { $$ = 'int'; }
     | DOUBLE 
-    {$$ = 'double';}
+    { $$ = 'double'; }
     | FLOAT 
-    {$$ = 'float';}
+    { $$ = 'float'; }
     | CHAR 
-    {$$ = 'char';}
+    { $$ = 'char'; }
     | UNSIGNED INT
-    {$$ = 'unsigned int';}
-    | SIGNED INT
-    {$$ = 'signed int';}
+    { $$ = 'unsigned int'; }
+    | UNSIGNED LONG INT
+    { $$ = 'unsigned long int'; }
+    | UNSIGNED LONG
+    { $$ = 'unsigned long'; }
+    | UNSIGNED SHORT INT
+    { $$ = 'unsigned short int'; }
     | LONG INT
-    {$$ = 'long int';}
+    { $$ = 'long int'; }
+    | LONG
+    { $$ = 'long'; }
     | SHORT INT
-    {$$ = 'short int';}
+    { $$ = 'short int'; }
+    | SIGNED INT
+    { $$ = 'signed int'; }
     | CONST INT
-    {$$ = 'const int';}
+    { $$ = 'const int'; }
     | VOLATILE INT
-    {$$ = 'volatile int';}
+    { $$ = 'volatile int'; }
     | REGISTER INT
-    {$$ = 'register int';}
+    { $$ = 'register int'; }
     | STRUCT IDF
-    {$$ = 'struct ' + $2;}
+    { $$ = 'struct ' + $2; }
     | UNION IDF
-    {$$ = 'union ' + $2;}
+    { $$ = 'union ' + $2; }
     | ENUM IDF
-    {$$ = 'enum ' + $2;}
+    { $$ = 'enum ' + $2; }
+    | IDF  // Tipos definidos via typedef
+    { $$ = obterValorDefinicao($1) || $1; }
     ;
 
 /* Declaração de variável com ou sem inicialização, incluindo arrays e ponteiros */
@@ -759,6 +771,41 @@ declaracao_variavel
             stringValue: $3
         };
         criarVariavel('union ' + $2, $3, $6.value);
+    }
+    ;
+
+typedef_decl
+    : TYPEDEF tipo_var IDF
+    {
+        // Adiciona o tipo definido à tabela de símbolos
+        tabelaDefinicoes[$3] = $2;
+        $$ = {
+            node: new Node('TYPEDEF', new Node($2), new Node($3))
+        };
+    }
+    | TYPEDEF struct_decl IDF
+    {
+        // Para typedef de structs
+        tabelaDefinicoes[$3] = 'struct ' + $2.id;
+        $$ = {
+            node: new Node('TYPEDEF_STRUCT', $2.node, new Node($3))
+        };
+    }
+    | TYPEDEF union_decl IDF
+    {
+        // Para typedef de unions
+        tabelaDefinicoes[$3] = 'union ' + $2.id;
+        $$ = {
+            node: new Node('TYPEDEF_UNION', $2.node, new Node($3))
+        };
+    }
+    | TYPEDEF enum_decl IDF
+    {
+        // Para typedef de enums
+        tabelaDefinicoes[$3] = 'enum ' + $2.id;
+        $$ = {
+            node: new Node('TYPEDEF_ENUM', $2.node, new Node($3))
+        };
     }
     ;
 
@@ -1760,7 +1807,12 @@ operador_relacional
 /* Structs */
 struct_decl
     : STRUCT IDF '{' struct_member_list '}' ';'
-    { $$ = { node: new Node('STRUCT_DECL', new Node($2), $4.node) }; }
+    { 
+        $$ = { 
+            node: new Node('STRUCT_DEF', new Node($2), $4.node),
+            id: $2
+        };
+    }
     | STRUCT IDF '{' struct_member_list '}' IDF ';'
     { 
         $$ = { 
