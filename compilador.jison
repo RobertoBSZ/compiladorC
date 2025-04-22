@@ -215,9 +215,12 @@
 [0-9]*\.[0-9]+([eE][+-][0-9]+)?     {console.log('Token F_LIT'); return 'F_LIT';}
 [0-9]+                              {console.log('Token INT_LIT'); return 'INT_LIT';}
 "'[a-zA-Z0-9]'"                     {console.log('Token CHAR_LIT'); return 'CHAR_LIT';}
+//"'"                                 {console.log('Token QUOTE'); return 'QUOTE';}
 "#"                                 {console.log('Token HASH'); return '#';}
 .                                   {console.log('Erro léxico: caractere [', yytext, '] não reconhecido.');}
 <<EOF>>                             {console.log('Token EOF'); return 'EOF';}
+
+
 
 %%
 
@@ -724,6 +727,24 @@ lista_ids
             stringValue: $1
         };
     }
+    | IDF '[' INT_LIT ']' '[' INT_LIT ']'  // Para arrays bidimensionais
+    {
+        criarVariavel($0+'[][]', $1, null);
+        $$ = {
+            node: new Node('ARRAY2D_DECL', new Node($0), new Node($1), new Node($3), new Node($6)),
+            value: null,
+            stringValue: $1
+        };
+    }
+    | IDF '[' INT_LIT ']' '[' INT_LIT ']' '=' '{' array_init_list_2d '}'
+    {
+        criarVariavel($0+'[][]', $1, $9.value);
+        $$ = {
+            node: new Node('ARRAY2D_INIT', new Node($0), new Node($1), new Node($3), new Node($6), $9.node),
+            value: $9.value,
+            stringValue: $1
+        };
+    }
     | IDF '[' IDF ']'
     {
         // Verifica se o identificador é uma definição
@@ -773,6 +794,7 @@ lista_ids
             };
         }
     }
+
     | lista_ids ',' IDF
     {
         criarVariavel($0, $3, null);
@@ -849,6 +871,7 @@ lista_ids
             };
         }
     }
+    
     ;
 
 array_init
@@ -857,7 +880,23 @@ array_init
         $$ = {
             node: new Node($1),
             value: [$1],
-            stringValue: $1
+            stringValue: $1.stringValue
+        };
+    }
+    | '{' array_init_list '}'  // Para arrays unidimensionais
+    {
+        $$ = {
+            node: new Node('ARRAY_INIT_LIST', $2.node),
+            value: $2.value,
+            stringValue: $2.stringValue
+        };
+    }
+    | '{' array_init_list_2d '}'  // Para arrays bidimensionais
+    {
+        $$ = {
+            node: new Node('ARRAY2D_INIT_LIST', $2.node),
+            value: $2.value,
+            stringValue: $2.stringValue
         };
     }
     | array_init ',' valor_lit
@@ -870,7 +909,44 @@ array_init
         };
     }
     ;
-
+array_init_list
+    : array_init
+    {
+        $$ = {
+            node: $1.node,
+            value: [$1.value],
+            stringValue: $1.stringValue
+        };
+    }
+    | array_init_list ',' array_init
+    {
+        $1.value.push($3.value);
+        $$ = {
+            node: new Node('ARRAY2D_ELEMS', $1.node, $3.node),
+            value: $1.value,
+            stringValue: $1.stringValue
+        };
+    }
+    ;
+array_init_list_2d
+    : '{' array_init_list '}'  // Uma linha da matriz
+    {
+        $$ = {
+            node: new Node('ARRAY2D_ROW', $2.node),
+            value: [$2.value],
+            stringValue: $2.stringValue
+        };
+    }
+    | array_init_list_2d ',' '{' array_init_list '}'  // Múltiplas linhas
+    {
+        $1.value.push($4.value);
+        $$ = {
+            node: new Node('ARRAY2D_ROWS', $1.node, $4.node),
+            value: $1.value,
+            stringValue: $1.stringValue
+        };
+    }
+    ;
 /* Expressão de atribuição */
 expressao_atribuicao
     : IDF '=' expressao_aritmetica
@@ -975,7 +1051,7 @@ cast_exp
     ;
 
 acesso_array
-    : IDF '[' expressao_aritmetica ']'
+    : IDF '[' expressao_aritmetica ']'  // Acesso unidimensional
     {
         verificaVariavel($1);
         $$ = {
@@ -984,7 +1060,22 @@ acesso_array
         };
         criaTAC($$.stringValue, $1, $3.stringValue, 'ARRAY_ACCESS');
     }
+    | IDF '[' expressao_aritmetica ']' '[' expressao_aritmetica ']'  // Acesso bidimensional
+    {
+        verificaVariavel($1);
+        $$ = {
+            node: new Node('ARRAY2D_ACCESS', new Node($1), $3.node, $6.node),
+            stringValue: criaTemp()
+        };
+        let tempIndex1 = criaTemp();
+        let tempOffset = criaTemp();
+        // Cálculo do offset para array bidimensional: base + (i * colunas + j) * tamanho_do_elemento
+        criaTAC(tempIndex1, $3.stringValue, $6.stringValue, 'MUL');
+        criaTAC(tempOffset, tempIndex1, 'sizeof(int)', 'MUL'); // Assumindo int por simplicidade
+        criaTAC($$.stringValue, $1, tempOffset, 'ADD');
+    }
     ;
+
 
 expressao_in_decrement
     : IDF INC
