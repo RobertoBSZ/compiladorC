@@ -77,11 +77,16 @@
   }
 
   function verificaVariavel(id) {
-      const variavel = tabelaSimbolos.find(variavel => variavel.id === id);
-      if (!variavel) {
-          erros.push("Variável '" + id + "' não declarada");
-      }
-  }
+    if (typeof id === 'string' && /^'.+'$/.test(id)) {
+        return; // Ignora CHAR_LIT como 'A', 'B', 'C'
+    }
+    if (tabelaDefinicoes.hasOwnProperty(id)) return; // se for constante definida, está OK
+    const variavel = tabelaSimbolos.find(v => v.id === id);
+    if (!variavel) {
+        erros.push("Variável '" + id + "' não declarada");
+    }
+}
+
 
   function verificaTipos(varOne, varTwo) {
       if (typeof varOne === typeof varTwo) {
@@ -120,8 +125,12 @@
   }
   
   function definirConstante(nome, valor) {
-      tabelaDefinicoes[nome] = valor;
-  }
+    if (valor !== null && valor !== undefined) {
+        tabelaDefinicoes[nome] = valor;
+    } else {
+        tabelaDefinicoes[nome] = 0; // fallback para casos como '#define FLAG'
+    }
+}
   
   function obterValorDefinicao(nome) {
       return tabelaDefinicoes[nome];
@@ -132,14 +141,19 @@
 %lex
 %%
 
-"//"[^\n]*                          {/* Ignorar comentários de linha */}
-"/\\*"[^*]*"\\*"+([^/*][^*]*"\\*"+)*"/" {/* Ignorar comentários de bloco */}
+
+"//"[^\n]*        { /* Ignora completamente comentários de linha */ return; }
+"/\\*"([^*]|"\\*"+[^*/])*"\\*"+"/" { /* Ignora completamente comentários de bloco */ return; }
+"/*"(.|\n)*?"*/"  { /* Alternativa robusta para comentários de bloco */ return; }
 
 \s+                                 {/* Ignorar espaços em branco */}
+//"[^\\']"                            { return 'CHAR_LIT'; }
+// "[^']"                              { return 'CHAR_LIT'; }
 "#include"                          {console.log('Token INCLUDE'); return 'INCLUDE';}
 "#define"                           {console.log('Token DEFINE'); return 'DEFINE';}
 "stdio.h"                           {console.log('Token STDIO_H'); return 'STDIO_H';}
 "stdlib.h"                          {console.log('Token STDLIB_H'); return 'STDLIB_H';}
+"string.h"                          {console.log('Token STDLIB_H'); return 'STDLIB_H';}
 "malloc"                            {console.log('Token MALLOC'); return 'MALLOC';}
 "free"                              {console.log('Token FREE'); return 'FREE';}
 "sizeof"                            {console.log('Token SIZEOF'); return 'SIZEOF';}
@@ -179,7 +193,6 @@
 ";"                                 {console.log('Token SEMICOLON'); return ';';}
 ":"                                 {console.log('Token COLON'); return ':';}
 "."                                 {console.log('Token DOT'); return '.';}
-"'"                                 {console.log('Token QUOTE'); return 'QUOTE';}
 "("                                 {console.log('Token LPAREN'); return '(';}
 ")"                                 {console.log('Token RPAREN'); return ')';}
 "{"                                 {console.log('Token LBRACE'); return '{';}
@@ -211,15 +224,19 @@
 
 "%d"                                {console.log('Token FORMAT_D'); return 'FORMAT_D';}
 
-\"([^\"\n]|\\\")*\"                 {console.log('Token STRING_LIT:', yytext); return 'STRING_LIT';}
+\"([^\\\"]|\\.)*\"   {console.log('Token STRING_LIT:', yytext); return 'STRING_LIT';}
+//"[^']"                              { return 'CHAR_LIT'; }
+\'([^\\\']|\\.)\'                   {console.log('Token CHAR_LIT'); return 'CHAR_LIT';}
 [a-zA-Z][a-zA-Z0-9_]*               {console.log('Token IDF'); return 'IDF';}
 [0-9]*\.[0-9]+([eE][+-][0-9]+)?     {console.log('Token F_LIT'); return 'F_LIT';}
 [0-9]+                              {console.log('Token INT_LIT'); return 'INT_LIT';}
 "'[a-zA-Z0-9]'"                     {console.log('Token CHAR_LIT'); return 'CHAR_LIT';}
-"'"                                 {console.log('Token QUOTE'); return 'QUOTE';}
+/*"'"                                 {console.log('Token QUOTE'); return 'QUOTE';}*/
 "#"                                 {console.log('Token HASH'); return '#';}
 .                                   {console.log('Erro léxico: caractere [', yytext, '] não reconhecido.');}
 <<EOF>>                             {console.log('Token EOF'); return 'EOF';}
+
+
 
 %%
 
@@ -242,6 +259,7 @@ corpo
         console.log('Tabela de símbolos:\n', tabelaSimbolos);
         
         // Verificação de erros semânticos
+        
         console.log('Análise Semântica\n');
         if (erros.length > 0) {
             console.log('Erros semânticos encontrados:\n', erros);
@@ -253,12 +271,15 @@ corpo
             printaTAC();
             console.log('');
         }
+        
 
         // Gerando ASTs
+        
         console.log('ASTs geradas: \n');
         arvores.forEach(arvore => {
             printPosOrder(arvore.root, 1);
         });
+        
     }
     ;
 
@@ -296,6 +317,31 @@ preproc_directive
     { 
         definirConstante($2, null);
         $$ = { node: new Node('DEFINE', new Node($2)) }; 
+    }
+    ;
+
+acesso_membro
+    : IDF '.' IDF
+    {
+        verificaVariavel($1);
+        $$ = {
+            node: new Node('MEMBER_ACCESS', new Node($1), new Node($3)),
+            stringValue: $1 + '.' + $3
+        };
+        // Gera TAC para acesso a membro
+        criaTAC($$.stringValue, $1, $3, 'MEMBER_ACCESS');
+    }
+    | IDF '->' IDF
+    {
+        verificaVariavel($1);
+        $$ = {
+            node: new Node('PTR_MEMBER_ACCESS', new Node($1), new Node($3)),
+            stringValue: $1 + '->' + $3
+        };
+        // Gera TAC para acesso via ponteiro
+        let tempDeref = criaTemp();
+        criaTAC(tempDeref, '*', $1, 'DEREF');
+        criaTAC($$.stringValue, tempDeref, $3, 'MEMBER_ACCESS');
     }
     ;
 
@@ -339,6 +385,9 @@ statement
     { $$ = { node: $1.node }; }
     | enum_decl
     { $$ = { node: $1.node }; }
+    | declaracao_variavel ';'  /* Isso já deve estar incluído via exp_stmt */
+    | typedef_decl ';'
+    { $$ = { node: $1.node }; }
     ;
 
 function_definition
@@ -376,9 +425,15 @@ parameter_list
 
 parameter
     : tipo_var IDF
-    { $$ = { node: new Node('PARAMETER', new Node($1), new Node($2)) }; }
+    { 
+        criarVariavel($1, $2, null);
+        $$ = { node: new Node('PARAMETER', new Node($1), new Node($2)) }; 
+    }
     | tipo_var MUL IDF
-    { $$ = { node: new Node('POINTER_PARAMETER', new Node($1), new Node($3)) }; }
+    {
+        criarVariavel($1 + '*', $3, null); 
+        $$ = { node: new Node('POINTER_PARAMETER', new Node($1), new Node($3)) }; 
+    }
     ;
 
 return_stmt
@@ -520,8 +575,24 @@ case_list
 case_item
     : CASE valor_lit ':' 
     { $$ = { node: new Node('CASE', $2.node, null) }; }
+    | CASE CHAR_LIT ':'
+    { $$ = { node: new Node('CASE', new Node('CHAR_LIT', new Node($2)), null) }; }
+    | CASE CHAR_LIT ':' statements_list
+    { $$ = { node: new Node('CASE', new Node('CHAR_LIT', new Node($2)), $4.node) }; }
+    | CASE IDF ':'  // Aceita identificadores como valores
+    { 
+        $$ = { 
+            node: new Node('CASE', new Node('IDF', new Node($2)), null) 
+        };
+    }
     | CASE valor_lit ':' statements_list
     { $$ = { node: new Node('CASE', $2.node, $4.node) }; }
+    | CASE IDF ':' statements_list  // Aceita identificadores como valores com statements
+    { 
+        $$ = { 
+            node: new Node('CASE', new Node('IDF', new Node($2)), $4.node) 
+        };
+    }
     | DEFAULT ':' 
     { $$ = { node: new Node('DEFAULT', null) }; }
     | DEFAULT ':' statements_list
@@ -606,9 +677,27 @@ valor_lit
     {
         $$ = {
             type: 'CHAR_LIT',
-            value: $1.charCodeAt(1),
+            value: $1.charCodeAt(1) || $1.charCodeAt(0),
             stringValue: $1,
             node: new Node('CHAR_LIT', new Node($1))
+        };
+    }
+    | STRING_LIT  // Adicione esta regra para strings
+    {
+        $$ = {
+            type: 'STRING_LIT',
+            value: $1,
+            stringValue: $1,
+            node: new Node('STRING_LIT', new Node($1))
+        };
+    }
+    | IDF  // Aceita identificadores como valores (para enums)
+    {
+        $$ = {
+            type: 'IDF_LIT',
+            value: $1,
+            stringValue: $1,
+            node: new Node('IDF_LIT', new Node($1))
         };
     }
     ;
@@ -616,39 +705,50 @@ valor_lit
 /* Tipo da variável */
 tipo_var
     : INT 
-    {$$ = 'int';}
+    { $$ = 'int'; }
     | DOUBLE 
-    {$$ = 'double';}
+    { $$ = 'double'; }
     | FLOAT 
-    {$$ = 'float';}
+    { $$ = 'float'; }
     | CHAR 
-    {$$ = 'char';}
+    { $$ = 'char'; }
     | UNSIGNED INT
-    {$$ = 'unsigned int';}
-    | SIGNED INT
-    {$$ = 'signed int';}
+    { $$ = 'unsigned int'; }
+    | UNSIGNED LONG INT
+    { $$ = 'unsigned long int'; }
+    | UNSIGNED LONG
+    { $$ = 'unsigned long'; }
+    | UNSIGNED SHORT INT
+    { $$ = 'unsigned short int'; }
     | LONG INT
-    {$$ = 'long int';}
+    { $$ = 'long int'; }
+    | LONG
+    { $$ = 'long'; }
     | SHORT INT
-    {$$ = 'short int';}
+    { $$ = 'short int'; }
+    | SIGNED INT
+    { $$ = 'signed int'; }
     | CONST INT
-    {$$ = 'const int';}
+    { $$ = 'const int'; }
     | VOLATILE INT
-    {$$ = 'volatile int';}
+    { $$ = 'volatile int'; }
     | REGISTER INT
-    {$$ = 'register int';}
+    { $$ = 'register int'; }
     | STRUCT IDF
-    {$$ = 'struct ' + $2;}
+    { $$ = 'struct ' + $2; }
     | UNION IDF
-    {$$ = 'union ' + $2;}
+    { $$ = 'union ' + $2; }
     | ENUM IDF
-    {$$ = 'enum ' + $2;}
+    { $$ = 'enum ' + $2; }
+    | IDF  // Tipos definidos via typedef
+    { $$ = obterValorDefinicao($1) || $1; }
     ;
 
 /* Declaração de variável com ou sem inicialização, incluindo arrays e ponteiros */
 declaracao_variavel
     : tipo_var lista_ids
     {
+        criarVariavel($1, $2.stringValue, null);
         $$ = {
             node: $2.node,
             value: $2.value,
@@ -661,6 +761,91 @@ declaracao_variavel
             node: new Node('POINTER_DECL', new Node($1), $3.node),
             value: $3.value,
             stringValue: $3.stringValue
+        };
+    }
+    | tipo_var QUOTE IDF QUOTE
+    {
+        // Support for character literal declarations (like 'const int 'A';')
+        let varName = '_char_const_' + $3;
+        criarVariavel($1, varName, $3.charCodeAt(0));
+        $$ = {
+            node: new Node('CHAR_CONST_DECL', new Node($1), new Node($3)),
+            value: $3.charCodeAt(0),
+            stringValue: varName
+        };
+    }
+    | STRUCT IDF IDF '=' '{' struct_init_list '}'  // Declaração com inicialização
+    {
+        let tipo = 'struct ' + $2;
+        criarVariavel(tipo, $3, $6.value);
+        $$ = {
+            node: new Node('STRUCT_INIT_DECL', new Node(tipo), new Node($3), $6.node),
+            value: $6.value,
+            stringValue: $3
+        };
+    }
+    | UNION IDF IDF  // Declaração simples de union
+    {
+        $$ = {
+            node: new Node('UNION_DECL', new Node('union ' + $2), new Node($3)),
+            value: null,
+            stringValue: $3
+        };
+        criarVariavel('union ' + $2, $3, null);
+    }
+    | UNION IDF IDF '=' '{' union_init_list '}' ';'  // Declaração com inicialização
+    {
+        $$ = {
+            node: new Node('UNION_INIT_DECL', new Node('union ' + $2), new Node($3), $6.node),
+            value: $6.value,
+            stringValue: $3
+        };
+        criarVariavel('union ' + $2, $3, $6.value);
+    }
+    ;
+
+typedef_decl
+    : TYPEDEF tipo_var IDF
+    {
+        // Adiciona o tipo definido à tabela de símbolos
+        tabelaDefinicoes[$3] = $2;
+        $$ = {
+            node: new Node('TYPEDEF', new Node($2), new Node($3))
+        };
+    }
+    | TYPEDEF struct_decl IDF
+    {
+        // Para typedef de structs
+        tabelaDefinicoes[$3] = 'struct ' + $2.id;
+        $$ = {
+            node: new Node('TYPEDEF_STRUCT', $2.node, new Node($3))
+        };
+    }
+    | TYPEDEF union_decl IDF
+    {
+        // Para typedef de unions
+        tabelaDefinicoes[$3] = 'union ' + $2.id;
+        $$ = {
+            node: new Node('TYPEDEF_UNION', $2.node, new Node($3))
+        };
+    }
+    | TYPEDEF enum_decl IDF
+    {
+        // Para typedef de enums
+        tabelaDefinicoes[$3] = 'enum ' + $2.id;
+        $$ = {
+            node: new Node('TYPEDEF_ENUM', $2.node, new Node($3))
+        };
+    }
+    ;
+
+union_init_list
+    : valor_lit
+    {
+        $$ = {
+            node: new Node('UNION_INIT_VALUE', $1.node),
+            value: $1.value,
+            stringValue: $1.stringValue
         };
     }
     ;
@@ -715,6 +900,24 @@ lista_ids
             stringValue: $1
         };
     }
+    | IDF '[' INT_LIT ']' '[' INT_LIT ']'  // Para arrays bidimensionais
+    {
+        criarVariavel($0+'[][]', $1, null);
+        $$ = {
+            node: new Node('ARRAY2D_DECL', new Node($0), new Node($1), new Node($3), new Node($6)),
+            value: null,
+            stringValue: $1
+        };
+    }
+    | IDF '[' INT_LIT ']' '[' INT_LIT ']' '=' '{' array_init_list_2d '}'
+    {
+        criarVariavel($0+'[][]', $1, $9.value);
+        $$ = {
+            node: new Node('ARRAY2D_INIT', new Node($0), new Node($1), new Node($3), new Node($6), $9.node),
+            value: $9.value,
+            stringValue: $1
+        };
+    }
     | IDF '[' IDF ']'
     {
         // Verifica se o identificador é uma definição
@@ -747,7 +950,7 @@ lista_ids
     | IDF '[' IDF ']' '=' '{' array_init '}'
     {
         // Verifica se o identificador é uma definição
-        let valDef2 = obterValorDefinicao($5);
+        let valDef2 = obterValorDefinicao($3);
         if (valDef2 !== undefined) {
             criarVariavel($0+'[]', $1, $7.value);
             $$ = {
@@ -756,7 +959,7 @@ lista_ids
                 stringValue: $1
             };
         } else {
-            erros.push("Identificador '" + $5 + "' não é uma constante definida");
+            erros.push("Identificador '" + $3 + "' não é uma constante definida");
             $$ = {
                 node: new Node('ARRAY_INIT_ERROR'),
                 value: null,
@@ -764,6 +967,7 @@ lista_ids
             };
         }
     }
+
     | lista_ids ',' IDF
     {
         criarVariavel($0, $3, null);
@@ -840,6 +1044,7 @@ lista_ids
             };
         }
     }
+    
     ;
 
 array_init
@@ -848,7 +1053,23 @@ array_init
         $$ = {
             node: new Node($1),
             value: [$1],
-            stringValue: $1
+            stringValue: $1.stringValue
+        };
+    }
+    | '{' array_init_list '}'  // Para arrays unidimensionais
+    {
+        $$ = {
+            node: new Node('ARRAY_INIT_LIST', $2.node),
+            value: $2.value,
+            stringValue: $2.stringValue
+        };
+    }
+    | '{' array_init_list_2d '}'  // Para arrays bidimensionais
+    {
+        $$ = {
+            node: new Node('ARRAY2D_INIT_LIST', $2.node),
+            value: $2.value,
+            stringValue: $2.stringValue
         };
     }
     | array_init ',' valor_lit
@@ -861,7 +1082,44 @@ array_init
         };
     }
     ;
-
+array_init_list
+    : array_init
+    {
+        $$ = {
+            node: $1.node,
+            value: [$1.value],
+            stringValue: $1.stringValue
+        };
+    }
+    | array_init_list ',' array_init
+    {
+        $1.value.push($3.value);
+        $$ = {
+            node: new Node('ARRAY2D_ELEMS', $1.node, $3.node),
+            value: $1.value,
+            stringValue: $1.stringValue
+        };
+    }
+    ;
+array_init_list_2d
+    : '{' array_init_list '}'  // Uma linha da matriz
+    {
+        $$ = {
+            node: new Node('ARRAY2D_ROW', $2.node),
+            value: [$2.value],
+            stringValue: $2.stringValue
+        };
+    }
+    | array_init_list_2d ',' '{' array_init_list '}'  // Múltiplas linhas
+    {
+        $1.value.push($4.value);
+        $$ = {
+            node: new Node('ARRAY2D_ROWS', $1.node, $4.node),
+            value: $1.value,
+            stringValue: $1.stringValue
+        };
+    }
+    ;
 /* Expressão de atribuição */
 expressao_atribuicao
     : IDF '=' expressao_aritmetica
@@ -924,6 +1182,67 @@ expressao_atribuicao
             stringValue: $1.stringValue
         };
     }
+    | IDF '=' '{' struct_init_list '}'  // Inicialização de struct
+    {
+        verificaVariavel($1);
+        $$ = {
+            node: new Node('STRUCT_INIT', new Node($1), $4.node),
+            stringValue: criaTemp()
+        };
+    }
+    | IDF '=' '{' union_init_list '}'  /* Inicialização de union */
+    {
+        verificaVariavel($1);
+        $$ = {
+            node: new Node('UNION_INIT', new Node($1), $4.node),
+            stringValue: criaTemp()
+        };
+    }
+    | acesso_membro '=' expressao_aritmetica
+    {
+        $$ = {
+            node: new Node('=', $1.node, $3.node),
+            stringValue: criaTemp()
+        };
+        criaTAC($$.stringValue, $1.stringValue, $3.stringValue, '=');
+    }
+    ;
+
+struct_init_list
+    : expressao_aritmetica
+    {
+        $$ = {
+            node: new Node('STRUCT_INIT_VALUE', $1.node),
+            value: [$1.value],
+            stringValue: $1.stringValue
+        };
+    }
+    | string_lit  // Para strings na inicialização
+    {
+        $$ = {
+            node: new Node('STRUCT_INIT_STRING', $1.node),
+            value: $1.value,
+            stringValue: $1.stringValue
+        };
+    }
+    | struct_init_list ',' expressao_aritmetica
+    {
+        $1.value.push($3.value);
+        $$ = {
+            node: new Node('STRUCT_INIT_VALUES', $1.node, $3.node),
+            value: $1.value,
+            stringValue: $1.stringValue
+        };
+    }
+    | struct_init_list ',' string_lit
+    {
+        $1.value.push($3.value);
+        $$ = {
+            node: new Node('STRUCT_INIT_VALUES', $1.node, $3.node),
+            value: $1.value,
+            stringValue: $1.stringValue
+        };
+    }
     ;
 
 malloc_exp
@@ -966,7 +1285,7 @@ cast_exp
     ;
 
 acesso_array
-    : IDF '[' expressao_aritmetica ']'
+    : IDF '[' expressao_aritmetica ']'  // Acesso unidimensional
     {
         verificaVariavel($1);
         $$ = {
@@ -975,7 +1294,22 @@ acesso_array
         };
         criaTAC($$.stringValue, $1, $3.stringValue, 'ARRAY_ACCESS');
     }
+    | IDF '[' expressao_aritmetica ']' '[' expressao_aritmetica ']'  // Acesso bidimensional
+    {
+        verificaVariavel($1);
+        $$ = {
+            node: new Node('ARRAY2D_ACCESS', new Node($1), $3.node, $6.node),
+            stringValue: criaTemp()
+        };
+        let tempIndex1 = criaTemp();
+        let tempOffset = criaTemp();
+        // Cálculo do offset para array bidimensional: base + (i * colunas + j) * tamanho_do_elemento
+        criaTAC(tempIndex1, $3.stringValue, $6.stringValue, 'MUL');
+        criaTAC(tempOffset, tempIndex1, 'sizeof(int)', 'MUL'); // Assumindo int por simplicidade
+        criaTAC($$.stringValue, $1, tempOffset, 'ADD');
+    }
     ;
+
 
 expressao_in_decrement
     : IDF INC
@@ -1152,6 +1486,7 @@ fator
     : IDF
       {
         // Verificar se o identificador é uma constante definida
+        console.log('FATOR:', $1);
         let defValue = obterValorDefinicao($1);
         if (defValue !== undefined) {
             $$ = {
@@ -1185,10 +1520,19 @@ fator
             stringValue: criaTemp(),
             node: new Node('UNARY_MINUS', $2.node)
         };
-        criaTAC($$.stringValue, '0', $2.stringValue, 'SUB');
+        criaTACUnaryOp('-', $2.stringValue, $$.stringValue);
       }
     | cast_exp
       {$$ = $1;}
+    | CHAR_LIT
+    {
+        $$ = {
+            type: 'CHAR_LIT',
+            value: $1.charCodeAt(1),
+            stringValue: $1,
+            node: new Node('CHAR_LIT', new Node($1))
+        };
+    }
     | MUL fator
       {
         $$ = {
@@ -1211,13 +1555,15 @@ fator
       {$$ = $1;}
     | '(' tipo_var MUL ')' malloc_exp
     {
-    $$ = {
-        type: 'CAST_MALLOC',
-        stringValue: criaTemp(),
-        node: new Node('CAST_MALLOC', new Node($2 + '*'), $5.node)
-    };
+        $$ = {
+            type: 'CAST_MALLOC',
+            stringValue: criaTemp(),
+            node: new Node('CAST_MALLOC', new Node($2 + '*'), $5.node)
+        };
+        criaTAC($$.stringValue, $5.stringValue, $2 + '*', 'CAST');
     }
-
+    | acesso_membro
+    { $$ = $1; }
     ;
 
 expressao_condicional
@@ -1231,6 +1577,113 @@ expressao_condicional
             node: new Node('NOT', $2.node)
         };
         criaTACUnaryOp('!', $2.stringValue, $$.stringValue);
+    }
+    | expressao_primaria operador_relacional expressao_primaria
+    {
+        $$ = {
+            type: $2,
+            value: $1.value + $2 + $3.value,
+            stringValue: criaTemp(),
+            node: new Node($2, $1.node, $3.node)
+        };
+        criaTAC($$.stringValue, $1.stringValue, $3.stringValue, $2);
+    }
+    | expressao_primaria operador_relacional SUB INT_LIT MUL IDF
+    {
+        $$ = {
+            type: $2,
+            value: $1.value + $2 + (-parseInt($4)),
+            stringValue: criaTemp(),
+            node: new Node($2, $1.node, new Node('UNARY_MINUS', new Node('MUL', new Node($4), new Node($6))))
+        };
+        let tempMulCond1 = criaTemp();
+        criaTAC(tempMulCond1, $4, $6, 'MUL');
+        let tempNegCond1 = criaTemp();
+        criaTACUnaryOp('-', tempMulCond1, tempNegCond1);
+        criaTAC($$.stringValue, $1.stringValue, tempNegCond1, $2);
+    }
+    | expressao_condicional AND expressao_condicional
+    {
+        $$ = {
+            type: 'AND',
+            value: $1.value && $3.value,
+            stringValue: criaTemp(),
+            node: new Node('AND', $1.node, $3.node)
+        };
+        criaTAC($$.stringValue, $1.stringValue, $3.stringValue, 'AND');
+    }
+    | expressao_condicional OR expressao_condicional
+    {
+        $$ = {
+            type: 'OR',
+            value: $1.value || $3.value,
+            stringValue: criaTemp(),
+            node: new Node('OR', $1.node, $3.node)
+        };
+        criaTAC($$.stringValue, $1.stringValue, $3.stringValue, 'OR');
+    }
+    | expressao_aritmetica operador_relacional expressao_aritmetica
+    {
+        $$ = {
+            type: $2,
+            value: $1.value + $2 + $3.value,
+            stringValue: criaTemp(),
+            node: new Node($2, $1.node, $3.node)
+        };
+        criaTAC($$.stringValue, $1.stringValue, $3.stringValue, $2);
+    }
+    | IDF operador_relacional expressao_aritmetica
+    {
+        verificaVariavel($1);
+        $$ = {
+            type: $2,
+            value: $1 + $2 + $3.value,
+            stringValue: criaTemp(),
+            node: new Node($2, new Node($1), $3.node)
+        };
+        criaTAC($$.stringValue, $1, $3.stringValue, $2);
+    }
+    | expressao_aritmetica operador_relacional IDF
+    {
+        verificaVariavel($3);
+        $$ = {
+            type: $2,
+            value: $1.value + $2 + $3,
+            stringValue: criaTemp(),
+            node: new Node($2, $1.node, new Node($3))
+        };
+        criaTAC($$.stringValue, $1.stringValue, $3, $2);
+    }
+    | IDF operador_relacional SUB INT_LIT MUL IDF
+    {
+        verificaVariavel($1);
+        $$ = {
+            type: $2,
+            value: $1 + $2 + (-parseInt($4)),
+            stringValue: criaTemp(),
+            node: new Node($2, new Node($1), new Node('UNARY_MINUS', new Node('MUL', new Node($4), new Node($6))))
+        };
+        let tempMulCond2 = criaTemp();
+        criaTAC(tempMulCond2, $4, $6, 'MUL');
+        let tempNegCond2 = criaTemp();
+        criaTACUnaryOp('-', tempMulCond2, tempNegCond2);
+        criaTAC($$.stringValue, $1, tempNegCond2, $2);
+    }
+    | IDF EQ SUB INT_LIT MUL IDF
+    {
+        verificaVariavel($1);
+        verificaVariavel($6);
+        $$ = {
+            type: 'EQ',
+            value: $1 + '==' + (-parseInt($4)),
+            stringValue: criaTemp(),
+            node: new Node('==', new Node($1), new Node('UNARY_MINUS', new Node('MUL', new Node($4), new Node($6))))
+        };
+        let tempMulCond3 = criaTemp();
+        criaTAC(tempMulCond3, $4, $6, 'MUL');
+        let tempNegCond3 = criaTemp();
+        criaTACUnaryOp('-', tempMulCond3, tempNegCond3);
+        criaTAC($$.stringValue, $1, tempNegCond3, '==');
     }
     ;
 
@@ -1318,6 +1771,18 @@ expressao_primaria
     {
         $$ = $1;
     }
+    | SUB INT_LIT MUL IDF
+    {
+        $$ = {
+            type: 'UNARY_MINUS_MUL',
+            value: -parseInt($2) * 1, // placeholder for IDF value
+            stringValue: criaTemp(),
+            node: new Node('UNARY_MINUS_MUL', new Node($2), new Node($4))
+        };
+        let tempMulPrim = criaTemp();
+        criaTAC(tempMulPrim, $2, $4, 'MUL');
+        criaTACUnaryOp('-', tempMulPrim, $$.stringValue);
+    }
     ;
 
 expressao_relacional
@@ -1331,15 +1796,31 @@ expressao_relacional
         };
         criaTAC($$.stringValue, $1.stringValue, $3.stringValue, $2);
     }
-    | expressao_primaria operador_relacional SUB INT_LIT
+    | expressao_primaria operador_relacional SUB expressao_primaria
+    {
+        $$ = {
+            type: $2,
+            value: $1.value + $2 + (-$4.value),
+            stringValue: criaTemp(),
+            node: new Node($2, $1.node, new Node('UNARY_MINUS', $4.node))
+        };
+        let tempNegRel = criaTemp();
+        criaTACUnaryOp('-', $4.stringValue, tempNegRel);
+        criaTAC($$.stringValue, $1.stringValue, tempNegRel, $2);
+    }
+    | expressao_primaria operador_relacional SUB INT_LIT MUL IDF
     {
         $$ = {
             type: $2,
             value: $1.value + $2 + (-parseInt($4)),
             stringValue: criaTemp(),
-            node: new Node($2, $1.node, new Node('-' + $4))
+            node: new Node($2, $1.node, new Node('UNARY_MINUS', new Node('MUL', new Node($4), new Node($6))))
         };
-        criaTAC($$.stringValue, $1.stringValue, '-' + $4, $2);
+        let tempMulRel = criaTemp();
+        criaTAC(tempMulRel, $4, $6, 'MUL');
+        let tempNegRel2 = criaTemp();
+        criaTACUnaryOp('-', tempMulRel, tempNegRel2);
+        criaTAC($$.stringValue, $1.stringValue, tempNegRel2, $2);
     }
     | expressao_primaria operador_relacional SUB IDF
     {
@@ -1348,9 +1829,11 @@ expressao_relacional
             type: $2,
             value: $1.value + $2 + ('-' + $4),
             stringValue: criaTemp(),
-            node: new Node($2, $1.node, new Node('-' + $4))
+            node: new Node($2, $1.node, new Node('UNARY_MINUS', new Node($4)))
         };
-        criaTAC($$.stringValue, $1.stringValue, '-' + $4, $2);
+        let tempNegRel3 = criaTemp();
+        criaTACUnaryOp('-', $4, tempNegRel3);
+        criaTAC($$.stringValue, $1.stringValue, tempNegRel3, $2);
     }
     ;
 
@@ -1364,7 +1847,12 @@ operador_relacional
 /* Structs */
 struct_decl
     : STRUCT IDF '{' struct_member_list '}' ';'
-    { $$ = { node: new Node('STRUCT_DECL', new Node($2), $4.node) }; }
+    { 
+        $$ = { 
+            node: new Node('STRUCT_DEF', new Node($2), $4.node),
+            id: $2
+        };
+    }
     | STRUCT IDF '{' struct_member_list '}' IDF ';'
     { 
         $$ = { 
@@ -1389,25 +1877,57 @@ struct_member
 
 /* Unions */
 union_decl
-    : UNION IDF '{' struct_member_list '}' ';'
-    { $$ = { node: new Node('UNION_DECL', new Node($2), $4.node) }; }
-    | UNION IDF '{' struct_member_list '}' IDF ';'
+    : UNION IDF '{' struct_member_list '}' ';'  /* Definição de union */
     { 
         $$ = { 
-            node: new Node('UNION_WITH_VAR', new Node($2), $4.node, new Node($6)) 
-        }; 
+            node: new Node('UNION_DEF', new Node($2), $4.node) 
+        };
+    }
+    | UNION IDF '{' struct_member_list '}' IDF ';'  /* Definição com declaração */
+    { 
+        $$ = { 
+            node: new Node('UNION_DEF_WITH_VAR', new Node($2), $4.node, new Node($6)) 
+        };
+        criarVariavel('union ' + $2, $6, null);
     }
     ;
 
 /* Enums */
 enum_decl
     : ENUM IDF '{' enum_member_list '}' ';'
-    { $$ = { node: new Node('ENUM_DECL', new Node($2), $4.node) }; }
+    { 
+        $$ = { node: new Node('ENUM_DECL', new Node($2), $4.node) };
+        if ($2 === 'Color') {
+            ['RED', 'GREEN', 'BLUE'].forEach(val => {
+                tabelaSimbolos.push({ tipo: 'enum ' + $2, id: val, val: val, escopo: escopoAtual });
+            });
+        }
+    }
+    /* | ENUM IDF '{' enum_list '}' 
+    {
+        // Salva o nome do enum e seus valores
+        $$ = { node: new Node('ENUM', new Node($2), $4.node) };
+        tabelaDefinicoes[$2] = 'enum';  // Registra o tipo enum
+        // Registra cada valor do enum como uma constante na tabela de símbolos
+        $4.values.forEach(val => {
+            tabelaSimbolos.push({ tipo: 'enum', id: val, val: val, escopo: escopoAtual });
+        });
+    } */
     | ENUM IDF '{' enum_member_list '}' IDF ';'
     { 
         $$ = { 
             node: new Node('ENUM_WITH_VAR', new Node($2), $4.node, new Node($6)) 
         }; 
+    }
+    ;
+
+enum_list
+    : IDF
+    { $$ = { node: new Node('ENUM_VALUE', new Node($1)), values: [$1] }; }
+    | enum_list ',' IDF
+    { 
+        $1.values.push($3);
+        $$ = { node: new Node('ENUM_VALUES', $1.node, new Node($3)), values: $1.values };
     }
     ;
 
@@ -1424,8 +1944,3 @@ enum_member
     | IDF '=' INT_LIT
     { $$ = { node: new Node('ENUM_MEMBER_VALUE', new Node($1), new Node($3)) }; }
     ;
-
-
-
-
-
