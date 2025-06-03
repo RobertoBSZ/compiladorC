@@ -17,6 +17,10 @@ a = d + 10;
 {
  int count = 40;
   d = count + 10;
+  {
+    int count = 50;
+    c = count + 10;
+  }
 }
 
 int count = d + b + c + 10;

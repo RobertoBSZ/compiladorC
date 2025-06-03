@@ -77,13 +77,23 @@
   }
 
   function verificaVariavel(id) {
-    if (typeof id === 'string' && /^'.+'$/.test(id)) {
-        return; // Ignora CHAR_LIT como 'A', 'B', 'C'
+    if (typeof id === 'string' && /^'.+'$/.test(id)) return;
+    if (tabelaDefinicoes.hasOwnProperty(id)) return;
+
+    // Procurar variáveis do escopo atual para cima
+    let encontrado = false;
+    let escopoBusca = escopoAtual;
+    while (escopoBusca >= 0) {
+        const variavel = tabelaSimbolos.find(v => v.id === id && v.escopo === escopoBusca);
+        if (variavel) {
+            encontrado = true;
+            break;
+        }
+        escopoBusca--; // Vai subindo na hierarquia
     }
-    if (tabelaDefinicoes.hasOwnProperty(id)) return; // se for constante definida, está OK
-    const variavel = tabelaSimbolos.find(v => v.id === id);
-    if (!variavel) {
-        erros.push("Variável '" + id + "' não declarada");
+
+    if (!encontrado) {
+        erros.push("Variável '" + id + "' não declarada no escopo atual");
     }
 }
 
@@ -274,12 +284,12 @@ corpo
         
 
         // Gerando ASTs
-        
+        /*
         console.log('ASTs geradas: \n');
         arvores.forEach(arvore => {
             printPosOrder(arvore.root, 1);
         });
-        
+        */
     }
     ;
 
@@ -445,11 +455,24 @@ return_stmt
 
 statement_composto
     : '{' statements_list '}'
-    { $$ = { node: new Node('BLOCK', $2.node) }; }
+    {
+        // Entra no bloco de escopo ANTES de processar os statements
+        escopoAtual++;
+        console.log("Entrou em novo escopo:", escopoAtual);
+        $$ = { node: new Node('BLOCK', $2.node) };
+        escopoAtual--;
+        console.log("Saiu para escopo:", escopoAtual);
+    }
     | '{' '}'
-    { $$ = { node: new Node('EMPTY_BLOCK') }; }
+    {
+        escopoAtual++;
+        console.log("Entrou em novo escopo:", escopoAtual);
+        $$ = { node: new Node('EMPTY_BLOCK') };
+        escopoAtual--;
+        console.log("Saiu para escopo:", escopoAtual);
+    }
     ;
-
+    
 /* Declaração de variável, atribuição de valor, expressão condicional */
 exp_stmt
     : declaracao_variavel ';' 

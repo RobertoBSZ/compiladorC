@@ -106,12 +106,12 @@ case 1:
         
 
         // Gerando ASTs
-        
+        /*
         console.log('ASTs geradas: \n');
         arvores.forEach(arvore => {
             printPosOrder(arvore.root, 1);
         });
-        
+        */
     
 break;
 case 2: case 3: case 13:
@@ -243,10 +243,23 @@ case 45:
  this.$ = { node: new Node('RETURN') }; 
 break;
 case 46:
- this.$ = { node: new Node('BLOCK', $$[$0-1].node) }; 
+
+        // Entra no bloco de escopo ANTES de processar os statements
+        escopoAtual++;
+        console.log("Entrou em novo escopo:", escopoAtual);
+        this.$ = { node: new Node('BLOCK', $$[$0-1].node) };
+        escopoAtual--;
+        console.log("Saiu para escopo:", escopoAtual);
+    
 break;
 case 47:
- this.$ = { node: new Node('EMPTY_BLOCK') }; 
+
+        escopoAtual++;
+        console.log("Entrou em novo escopo:", escopoAtual);
+        this.$ = { node: new Node('EMPTY_BLOCK') };
+        escopoAtual--;
+        console.log("Saiu para escopo:", escopoAtual);
+    
 break;
 case 48:
 this.$ = {node: $$[$0-1].node, stringValue: $$[$0-1].stringValue, value: $$[$0-1].value}
@@ -1801,13 +1814,23 @@ parse: function parse(input) {
   }
 
   function verificaVariavel(id) {
-    if (typeof id === 'string' && /^'.+'$/.test(id)) {
-        return; // Ignora CHAR_LIT como 'A', 'B', 'C'
+    if (typeof id === 'string' && /^'.+'$/.test(id)) return;
+    if (tabelaDefinicoes.hasOwnProperty(id)) return;
+
+    // Procurar variáveis do escopo atual para cima
+    let encontrado = false;
+    let escopoBusca = escopoAtual;
+    while (escopoBusca >= 0) {
+        const variavel = tabelaSimbolos.find(v => v.id === id && v.escopo === escopoBusca);
+        if (variavel) {
+            encontrado = true;
+            break;
+        }
+        escopoBusca--; // Vai subindo na hierarquia
     }
-    if (tabelaDefinicoes.hasOwnProperty(id)) return; // se for constante definida, está OK
-    const variavel = tabelaSimbolos.find(v => v.id === id);
-    if (!variavel) {
-        erros.push("Variável '" + id + "' não declarada");
+
+    if (!encontrado) {
+        erros.push("Variável '" + id + "' não declarada no escopo atual");
     }
 }
 
