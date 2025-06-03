@@ -1,0 +1,30 @@
+#include <stdio.h>
+#include <stdlib.h>
+
+
+int main (){
+
+    int a,b,c;
+    int d= 20;
+    a = d + 10;
+    int res1, res2, res3;
+
+    {
+        int count = 30;
+        b = count  + 10;
+        res1 = b;
+    }
+
+    {
+        int count = 40;
+        d = count + 10;
+        res2 = d;
+    }
+
+    int count = d + b + c + 10;
+    res3 = count;
+
+    printf("%d %d %d, res1,res2,res3);
+
+    return 0;
+}

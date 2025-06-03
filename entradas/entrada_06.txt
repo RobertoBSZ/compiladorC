@@ -1,0 +1,26 @@
+#include <stdio.h>
+#include <stdlib.h>
+
+
+
+int main (){
+
+int a,b,c;
+int d= 20;
+a = d + 10;
+
+{
+ int count = 30;
+ b = count  + 10;
+}
+
+{
+ int count = 40;
+  d = count + 10;
+}
+
+int count = d + b + c + 10;
+
+return 0;
+
+}
